@@ -19,6 +19,7 @@ import numpy as np
 from time import time
 import argparse
 import torch
+from tqdm import tqdm
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from decalib.deca import DECA
@@ -50,55 +51,30 @@ def main(args):
         id_opdict, id_visdict = deca.decode(id_codedict)
     id_visdict = {x: id_visdict[x] for x in ['inputs', 'shape_detail_images']}
 
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 设置输出视频为mp4格式
+    # cap_fps是帧率，根据自己需求设置帧率
+    cap_fps = 30
+
+    # size要和图片的size一样，但是通过img.shape得到图像的参数是（height，width，channel），
+    # 可以实现在图片文件夹下查看图片属性，获得图片的分辨率
+    size = (224, 224)  # size（width，height）
+    # 设置输出视频的参数，如果是灰度图，可以加上 isColor = 0 这个参数
+    # video = cv2.VideoWriter('results/result.avi',fourcc, cap_fps, size, isColor=0)
+    video = cv2.VideoWriter('result2.mp4', fourcc, cap_fps, size)  # 设置保存视频的名称和路径，默认在根目录下
     # -- expression transfer
     # exp code from image
-    exp_images = expdata[i]['image'].to(device)[None, ...]
-    with torch.no_grad():
-        exp_codedict = deca.encode(exp_images)
-        # transfer exp code
-        id_codedict['pose'][:, 3:] = exp_codedict['pose'][:, 3:]
-        id_codedict['exp'] = exp_codedict['exp']
-        transfer_opdict, transfer_visdict = deca.decode(id_codedict)
-        id_visdict['transferred_shape'] = transfer_visdict['shape_detail_images']
-        cv2.imwrite(os.path.join(savefolder, name + '_animation.jpg'), deca.visualize(id_visdict))
-
-    transfer_opdict['uv_texture_gt'] = id_opdict['uv_texture_gt']
-    if args.saveDepth or args.saveKpt or args.saveObj or args.saveMat or args.saveImages:
-        os.makedirs(os.path.join(savefolder, name, 'reconstruction'), exist_ok=True)
-        os.makedirs(os.path.join(savefolder, name, 'animation'), exist_ok=True)
-
-    # -- save results
-    image_name = name
-    for save_type in ['reconstruction', 'animation']:
-        if save_type == 'reconstruction':
-            visdict = id_codedict
-            opdict = id_opdict
-        else:
-            visdict = transfer_visdict
-            opdict = transfer_opdict
-        if args.saveDepth:
-            depth_image = deca.render.render_depth(opdict['trans_verts']).repeat(1, 3, 1, 1)
-            visdict['depth_images'] = depth_image
-            cv2.imwrite(os.path.join(savefolder, name, save_type, name + '_depth.jpg'),
-                        util.tensor2image(depth_image[0]))
-        if args.saveKpt:
-            np.savetxt(os.path.join(savefolder, name, save_type, name + '_kpt2d.txt'),
-                       opdict['landmarks2d'][0].cpu().numpy())
-            np.savetxt(os.path.join(savefolder, name, save_type, name + '_kpt3d.txt'),
-                       opdict['landmarks3d'][0].cpu().numpy())
-        if args.saveObj:
-            deca.save_obj(os.path.join(savefolder, name, save_type, name + '.obj'), opdict)
-        if args.saveMat:
-            opdict = util.dict_tensor2npy(opdict)
-            savemat(os.path.join(savefolder, name, save_type, name + '.mat'), opdict)
-        if args.saveImages:
-            for vis_name in ['inputs', 'rendered_images', 'albedo_images', 'shape_images', 'shape_detail_images']:
-                if vis_name not in visdict.keys():
-                    continue
-                image = util.tensor2image(visdict[vis_name][0])
-                cv2.imwrite(os.path.join(savefolder, name, save_type, name + '_' + vis_name + '.jpg'),
-                            util.tensor2image(visdict[vis_name][0]))
-    print(f'-- please check the results in {savefolder}')
+    for i in tqdm(range(len(expdata))):
+        exp_images = expdata[i]['image'].to(device)[None, ...]
+        with torch.no_grad():
+            exp_codedict = deca.encode(exp_images)
+            # transfer exp code
+            id_codedict['pose'][:, 3:] = exp_codedict['pose'][:, 3:]
+            id_codedict['exp'] = exp_codedict['exp']
+            transfer_opdict, transfer_visdict = deca.decode(id_codedict)
+            id_visdict['transferred_shape'] = transfer_visdict['shape_detail_images']
+            to_save = dict()
+            to_save['shape_detail_images'] = transfer_visdict['shape_detail_images']
+            video.write(deca.visualize(to_save))
 
 
 if __name__ == '__main__':
@@ -106,7 +82,7 @@ if __name__ == '__main__':
 
     parser.add_argument('-i', '--image_path', default='TestSamples/examples/IMG_0392_inputs.jpg', type=str,
                         help='path to input image')
-    parser.add_argument('-e', '--exp_path', default='TestSamples/exp/7.jpg', type=str,
+    parser.add_argument('-e', '--exp_path', default='TestSamples/2', type=str,
                         help='path to expression')
     parser.add_argument('-s', '--savefolder', default='TestSamples/animation_results', type=str,
                         help='path to the output directory, where results(obj, txt files) will be stored.')

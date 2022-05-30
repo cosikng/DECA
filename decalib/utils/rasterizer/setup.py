@@ -15,10 +15,10 @@ USE_NINJA = os.getenv('USE_NINJA') == '1'
 setup(
     name='standard_rasterize_cuda',
     ext_modules=[
-	CUDAExtension('standard_rasterize_cuda', [
-        'standard_rasterize_cuda.cpp',
-        'standard_rasterize_cuda_kernel.cu',
+        CUDAExtension('standard_rasterize_cuda', [
+            'standard_rasterize_cuda.cpp',
+            'standard_rasterize_cuda_kernel.cu',
         ])
-	],
+    ],
     cmdclass={'build_ext': BuildExtension.with_options(use_ninja=USE_NINJA)}
 )
